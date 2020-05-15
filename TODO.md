@@ -1,0 +1,7 @@
+- Weights
+- Iteration limits
+- Convergence limits
+- Dimension normalisation methods (personal, optimise, weizfeld)
+- Different distance measuring methods
+- Different GM finding methods
+- Maybe even best method selection based on data characteristics
