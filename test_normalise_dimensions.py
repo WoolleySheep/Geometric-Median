@@ -6,7 +6,6 @@ Last Modified: 16-MAY-2020
 """
 __author__ = "Matthew Woolley"
 
-
 import numpy as np
 import unittest
 from normalise_dimensions import normalise_using_min_max

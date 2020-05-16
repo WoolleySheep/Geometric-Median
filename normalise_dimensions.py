@@ -39,7 +39,6 @@ def normalise_using_min_max(points: np.array) -> np.array:
     zero_diff_indexes = np.isclose(min_vals, max_vals)
     # This needs work
     #return (points - min_vals) / (points.max(axis=0) - min_vals)
-
 def normalise_using_mean(points: np.array) -> np.array:
 
     return (points - points.mean(axis=0)) / (points.max(axis=0) - points.min(axis=0))
