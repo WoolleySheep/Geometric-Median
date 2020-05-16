@@ -27,8 +27,18 @@ def normalise_dimensions(points: np.array, method: str='min-max') -> np.array:
 
 def normalise_using_min_max(points: np.array) -> np.array:
 
+    if type(points) is not np.ndarray:
+        raise TypeError("points must a a numpy array")
+    if len(points.shape) != 2:
+        raise TypeError(f"points must be a 2D array; currently of shape {points.shape}")
+    if np.isrealobj(points) is False:
+        raise TypeError("The data type of points must be real numeric")
+
     min_vals = points.min(axis=0)
-    return (points - min_vals) / (points.max(axis=0) - min_vals)
+    max_vals = points.max(axis=0)
+    zero_diff_indexes = np.isclose(min_vals, max_vals)
+    # This needs work
+    #return (points - min_vals) / (points.max(axis=0) - min_vals)
 
 def normalise_using_mean(points: np.array) -> np.array:
 
@@ -41,13 +51,3 @@ def normalise_using_z_score(points: np.array) -> np.array:
 def normalise_using_unit_length(points: np.array) -> np.array:
 
     return points / np.linalg.norm(points, axis=0)
-
-
-
-
-#normalise_dimensions(np.array([1, 2]), 'max')
-
-x = np.array([[1, 2], [3, 1], [5, 3]])
-print(normalise_dimensions(x, 'unit-length'))
-
-
