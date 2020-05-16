@@ -2,3 +2,4 @@
 venv/
 # Don't track PyCharm files
 .idea/
+__pycache__/
