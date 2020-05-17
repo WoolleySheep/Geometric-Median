@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-Description:        
-Date Created:       
-Last Modified:      
+Description: Geometric median function implementation
+Date Created: 15-MAY-2020
+Last Modified: 17-MAY-2020
 """
 
 import numpy as np
@@ -11,7 +11,8 @@ from scipy.optimize import minimize
 
 __author__ = "Matthew Woolley"
 
-def geometric_median(points: np.array, weights: np.array=None, method: str='weiszfeld', convergence_threshold: float=1e-5, iteration_limit: int=1000, dist_measure: str='euclidean', solver_method=None):
+
+def geometric_median(points: np.array, weights: np.array = None, method: str = 'weiszfeld', convergence_threshold: float = 1e-5, iteration_limit: int = 1000, dist_measure: str = 'euclidean', solver_method: str = None) -> np.array:
 
     # Raise errors for improper inputs
 
@@ -70,7 +71,6 @@ def geometric_median(points: np.array, weights: np.array=None, method: str='weis
 
 def weiszfeld_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
 
-
     # Find the weighted centroid and set as the initial center
     curr_center = (weights[:, None] * points).sum(axis=0) / weights.sum()
 
@@ -98,7 +98,6 @@ def weiszfeld_algorithm(points: np.ndarray, weights: np.array, convergence_thres
 
 def minimize_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str, solver_method: str) -> np.array:
 
-
     def calc_weighted_distance(curr_center):
 
         return (weights * cdist(np.array([curr_center]), points, metric=dist_measure)).sum()
@@ -121,4 +120,3 @@ def predict_optiomal_method(npoint, ndim, convergence_threshold):
     # Vardi-Zhang
 
     return
-
