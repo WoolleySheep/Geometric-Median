@@ -98,14 +98,14 @@ def weiszfeld_algorithm(points: np.ndarray, weights: np.array, convergence_thres
 
 def minimize_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str, solver_method: str) -> np.array:
 
-    def calc_weighted_distance(curr_center):
+    def calc_weighted_distance_score(curr_center):
 
         return (weights * cdist(np.array([curr_center]), points, metric=dist_measure)).sum()
 
     # Find the weighted centroid and set as the initial center
     curr_center = (weights[:, None] * points).sum(axis=0) / weights.sum()
 
-    optimize_result = minimize(calc_weighted_distance, curr_center, method=solver_method, tol=convergence_threshold, options={'maxiter': iteration_limit})
+    optimize_result = minimize(calc_weighted_distance_score, curr_center, method=solver_method, tol=convergence_threshold, options={'maxiter': iteration_limit})
 
     return optimize_result.x
 
