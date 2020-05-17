@@ -9,7 +9,7 @@ __author__ = "Matthew Woolley"
 
 import numpy as np
 import unittest
-from geometric_median import geometric_median
+from geometric_median.geometric_median import geometric_median
 
 
 class TestGeometricMedian(unittest.TestCase):
