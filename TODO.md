@@ -1,7 +1,3 @@
-- Weights
-- Iteration limits
-- Convergence limits
-- Dimension normalisation methods (personal, optimise, weizfeld)
-- Different distance measuring methods
-- Different GM finding methods
-- Maybe even best method selection based on data characteristics
+- Add additional geomtric median finding algorithms
+- Implement sci-kit learn preprocessing normalisation methods AND denormalisation methods
+- Choose the best geometric median algorithm based on input characteristics
