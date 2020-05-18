@@ -69,11 +69,17 @@ class TestGeometricMedian(unittest.TestCase):
         self.assertRaises(ValueError, geometric_median, points, weights=np.array([[1], [2]]))
         # Not having >= one point raises Value Error
         self.assertRaises(ValueError, geometric_median, points, weights=np.array([]))
+        # Not having nweights == npoints raises Value Error
+        self.assertRaises(ValueError, geometric_median, points, weights=np.array([1, 1]))
+        # Having any weights of value zero raises Value Error
+        self.assertRaises(ValueError, geometric_median, points, weights=np.array([1, 0, 1]))
+        # A weight has a negative value when standard scaling used
+        self.assertRaises(ValueError, geometric_median, points, weights=np.array([1, -1, 1]), scale_method='standard')
 
-    def test_method_value(self):
+    def test_convergence_method_value(self):
         points = np.array([[1, 2], [2, 1], [2, 8]])
         # Object not in valid_methods list
-        self.assertRaises(ValueError, geometric_median, points, method='Drax')
+        self.assertRaises(ValueError, geometric_median, points, convergence_method='Drax')
 
     def test_convergence_threshold_type(self):
         points = np.array([[1, 2], [2, 1], [2, 8]])

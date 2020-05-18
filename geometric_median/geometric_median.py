@@ -5,14 +5,18 @@ Date Created: 15-MAY-2020
 Last Modified: 17-MAY-2020
 """
 
+from math import log
 import numpy as np
 from scipy.spatial.distance import cdist
+from scipy.stats import multivariate_normal
 from scipy.optimize import minimize
+from sklearn.preprocessing import MinMaxScaler, MaxAbsScaler
+from warnings import warn
 
 __author__ = "Matthew Woolley"
 
 
-def geometric_median(points: np.array, weights: np.array = None, method: str = 'weiszfeld', convergence_threshold: float = 1e-5, iteration_limit: int = 1000, dist_measure: str = 'euclidean', solver_method: str = None) -> np.array:
+def geometric_median(points: np.array, weights: np.array = None, convergence_method: str = 'vardi-zhang', convergence_threshold: float = 1e-5, iteration_limit: int = 1000, dist_measure: str = 'euclidean', scale_method=None, solver_method: str = None) -> np.array:
 
     # Raise errors for improper inputs
 
@@ -39,11 +43,17 @@ def geometric_median(points: np.array, weights: np.array = None, method: str = '
             raise TypeError(f"Datatype of points must be real numbers; current datatype is {points.dtype}")
         if len(weights.shape) != 1:
             raise ValueError(f"weights must be a 1D array; currently shape is {weights.shape}")
+        if weights.size != npoint:
+            raise ValueError(f"There must be the same number of weights as points; currently {weights.size} weights and {npoint} points")
+        if np.isclose(weights, 0.0).any():
+            raise ValueError("weights cannot contain any values == 0; recommend removing these points before calculation")
+        if weights.sum() < 0:
+            raise ValueError("the sum of the weights cannot be > 0")
 
     # method errors
-    valid_methods = {'weiszfeld', 'minimize'}
-    if method not in valid_methods:
-        raise ValueError(f"Invalid method given: {method} not in {valid_methods}")
+    valid_convergence_methods = {'minimize': minimize_algorithm, 'weiszfeld': weiszfeld_algorithm, 'vardi-zhang': vardi_zhang_algorithm, 'cohen-lee': cohen_lee_algorithm}
+    if convergence_method not in valid_convergence_methods:
+        raise ValueError(f"Invalid convergence method given: {convergence_method} not in {set(valid_convergence_methods.keys())}")
 
     # convergence_threshold errors
     if type(convergence_threshold) not in (int, float):
@@ -57,43 +67,46 @@ def geometric_median(points: np.array, weights: np.array = None, method: str = '
     if iteration_limit <= 0:
         raise ValueError(f"Value of iteration_limit must be > 0; current value is {iteration_limit}")
 
+    # scalar_method errors
+    if scale_method is not None:
+        valid_scale_methods = {'min-max': MinMaxScaler, 'max-abs': MaxAbsScaler, 'standard': None}
+        if scale_method not in valid_scale_methods:
+            raise ValueError(f"Invalid scaling method given: {scale_method} not in {set(valid_scale_methods.keys())}")
+        if scale_method == 'standard':
+            if (weights < 0).any():
+                raise ValueError("weights cannot contain any values < 0 when using standard scaling")
+            points_mean = np.average(points, axis=0, weights=weights)
+            points_var = np.average((points - points_mean[: None]) ** 2, axis=0, weights=weights)
+            points_std = np.sqrt(points_var)
+            points = (points - points_mean) / points_std
+        else:
+            scaler = valid_scale_methods[scale_method]()
+            points = scaler.fit_transform(points)
+
     # distance_measure errors
     # Caught by scipy.spatial.distance.cdist
 
     # solver_method errors
     # Caught by scipy.optimize.minimize
 
-    if method == 'weiszfeld':
-        return weiszfeld_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
-    elif method == 'minimize':
-        return minimize_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure, solver_method)
+    elif convergence_method == 'minimize':
+        if solver_method == None:
+            solver_method = 'Nelder-Mead'
+        result = minimize_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure, solver_method)
+    if convergence_method == 'weiszfeld':
+        result = weiszfeld_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
+    elif convergence_method == 'vardi-zhang':
+        result = vardi_zhang_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
+    elif convergence_method == 'cohen-lee':
+        result = cohen_lee_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
 
+    if scale_method is not None:
+        if scale_method == 'standard':
+            result = (result * points_std) + points_mean
+        else:
+            result = scaler.inverse_transform(result.reshape(1, -1))[0]
 
-def weiszfeld_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
-
-    # Find the weighted centroid and set as the initial center
-    curr_center = (weights[:, None] * points).sum(axis=0) / weights.sum()
-
-    move_dist = float('inf')
-    for _ in range(iteration_limit):
-        if move_dist < convergence_threshold:
-            return curr_center
-        # If curr_center is the same as one of the points, move the current center slightly away from that point
-        # The weiszfeld algorithm will fail to converge if it gets stuck on one of the points
-        if np.isclose(points, curr_center).all(axis=1).any():
-            _, ndim = points.shape
-            dim = np.random.choice(range(ndim))
-            dir = np.random.choice([1, -1])
-            curr_center[dim] += dir * convergence_threshold / 2
-        prev_center = curr_center
-        # Calculate the weighted distances from the current center to all points
-        weighted_distances = cdist(np.array([prev_center]), points, metric=dist_measure) / weights
-        # Get new center prediction
-        curr_center = (points / weighted_distances.T).sum(axis=0) / (1.0 / weighted_distances).sum()
-        # Calculate the distance between the current center and the previous center
-        move_dist = cdist(np.array([curr_center]), np.array([prev_center]), metric=dist_measure)[0]
-
-    raise ValueError(f"Weiszfelds algorithm not able to converge within {iteration_limit} iterations")
+    return result
 
 
 def minimize_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str, solver_method: str) -> np.array:
@@ -107,14 +120,155 @@ def minimize_algorithm(points: np.ndarray, weights: np.array, convergence_thresh
 
     optimize_result = minimize(calc_weighted_distance_score, curr_center, method=solver_method, tol=convergence_threshold, options={'maxiter': iteration_limit})
 
-    return optimize_result.x
+    if optimize_result.success:
+        return optimize_result.x
+    else:
+        raise ValueError(optimize_result.message)
 
+
+def weiszfeld_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
+
+    # Find the weighted centroid and set as the initial center
+    prev_center = (weights[:, None] * points).sum(axis=0) / weights.sum()
+
+    for _ in range(iteration_limit):
+        # Check if the current center is same as a point; weiszfeld will stop converging
+        # This is a flaw in the algorithm adressed in vardi-zhang
+        if np.isclose(points, prev_center).all(axis=1).any():
+            return prev_center
+        # Calculate the weighted distances from the current center to all points
+        weighted_distances = cdist(np.array([prev_center]), points, metric=dist_measure)[0] / weights
+        # Get new center prediction
+        curr_center = (points / weighted_distances[:, None]).sum(axis=0) / (1.0 / weighted_distances).sum()
+        # Calculate the distance between the current center and the previous center
+        move_dist = cdist(np.array([curr_center]), np.array([prev_center]), metric=dist_measure)[0, 0]
+        if move_dist < convergence_threshold:
+            return curr_center
+        prev_center = curr_center
+
+    raise ValueError(f"Weiszfelds algorithm not able to converge within {iteration_limit} iterations")
+
+
+def vardi_zhang_algorithm(points: np.ndarray, weights: np.array, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
+    """
+    Adaption of the weiszfeld algorithm that deals with the current center getting 'stuck' on points in the dataset
+    file:///C:/Users/mattw/Downloads/SSRN-id1690502.pdf
+    :param points:
+    :param weights:
+    :param convergence_threshold:
+    :param iteration_limit:
+    :param dist_measure:
+    :return:
+    """
+
+    # Find the weighted centroid and set as the initial center
+    prev_center = (weights[:, None] * points).sum(axis=0) / weights.sum()
+
+    for _ in range(iteration_limit):
+        # Calculate the weighted distances from the current center to all points
+        weighted_distances = cdist(np.array([prev_center]), points, metric=dist_measure)[0] / weights
+        # Narrow to only the non-zero weighted distances
+        non_zero = ~np.isclose(weighted_distances, 0.0)
+        weighted_distances = weighted_distances[non_zero]
+        # Implement the process detailed in "A comparison of algorithms for multivariate L1-median
+        T = (points[non_zero] / weighted_distances[:, None]).sum(axis=0) / (1.0 / weighted_distances[:, None]).sum()
+        eta = 1 if np.isclose(points, prev_center).all(axis=1).any() else 0
+        R = ((points[non_zero] - prev_center) / weighted_distances[:, None]).sum(axis=0)
+        diff_dist = cdist(np.array([np.zeros_like(R)]), np.array([R]), metric=dist_measure)[0, 0]
+        if np.isclose(diff_dist, 0.0):
+            gamma = 1
+        else:
+            gamma = min(1, eta / diff_dist)
+        curr_center = (1 - gamma) * T + gamma * prev_center
+
+        # Calculate the distance between the current center and the previous center
+        move_dist = cdist(np.array([curr_center]), np.array([prev_center]), metric=dist_measure)[0][0]
+        if move_dist < convergence_threshold:
+            return curr_center
+        prev_center = curr_center
+
+    raise ValueError(f"Vardi-Zhang algorithm not able to converge within {iteration_limit} iterations")
+
+def cohen_lee_algorithm(points: np.ndarray, weights: np.ndarray, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
+
+    return accurate_median(points, convergence_threshold)
+
+def accurate_median(points: np.ndarray, convergence_threshold: float):
+
+    npoint, ndim = points.shape
+
+    x0 = points.mean(axis=0)
+    f_star_hat = cdist(np.array([x0]), points).sum()
+    t1 = calc_t(1, f_star_hat)
+    conv_thresh_star_hat = convergence_threshold / 3
+    t_star_hat = 2 * npoint / (conv_thresh_star_hat * f_star_hat)
+    conv_thresh_v = (1 / 8) * (conv_thresh_star_hat / (7 * npoint)) ** 2
+    conv_thresh_c = (conv_thresh_v / 36) ** (3 /2)
+    x1 = line_search(x0, t1, t1, 0, conv_thresh_c)
+
+    i = 1
+    while calc_t(i, f_star_hat) <= t_star_hat:
+        t = calc_t(i, f_star_hat)
+        lambd, u = approx_min_eig(x, t, conv_thresh_v)
+        x = line_search(x, t, calc_t(i + 1, f_star_hat), u, conv_thresh_c)
+        i += 1
+
+def calc_t(i, f_star_hat):
+
+    return (1 + 1/600) ** i / (400 * f_star_hat)
+
+
+def approx_min_eig(point: np.ndarray, path_parameter: float, convergence_threshold: float):
+
+    pass
+
+def power_method(A, k):
+
+    g = A.shape[0]
+    x = multivariate_normal(np.array([0, 1]), mean=0, cov=1)
+    y = np.linalg.matrix_power(A, k) * x
+
+    return y / np.linalg.norm(y)
+
+def local_center(point: np.ndarray, path_parameter: float, convergence_threshold: float):
+
+    pass
+
+def line_search(point: np.ndarray, curr_path_param: float, next_path_param: float, bad_decision: float, convergence_threshold: float):
+
+    pass
+
+def one_dim_minimizer(lower_bound: float, upper_bound: float, convergence_threshold: float, oracle: float, lopschitz_bound: float):
+
+    x = lower_bound
+    y_lower = lower_bound
+    y_upper = upper_bound
+
+    for i in range(1, log((upper_bound - lower_bound) / convergence_threshold, 3 / 2)):
+        z_lower = (2 * y_lower + y_upper) / 3
+        z_upper = (y_lower + 2 * y_upper) / 3
+        if oracle(z_lower) <= oracle(z_upper):
+            y_upper = z_upper
+            if oracle(z_lower) <= oracle(x):
+                x = z_lower
+        elif oracle(z_lower) > oracle(z_upper):
+            y_lower = z_lower
+            if oracle(z_upper) <= oracle(x):
+                x = z_upper
+
+    return x
+
+def oracle(alpha):
+
+    pass
 
 def predict_optiomal_method(npoint, ndim, convergence_threshold):
 
     # TODO: Need to find time complexity estimates of methods
     methods = ["Weizfeld", "Vardi-Zhang"]
 
+    # https://stackoverflow.com/questions/12934213/how-to-find-out-geometric-median
+    weizfeld_comp = npoint * ndim / convergence_threshold
     time = []
     # Weizfeld
     # Vardi-Zhang
