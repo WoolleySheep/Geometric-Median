@@ -1,4 +1,3 @@
 - Convert existing geometric median finding algorithms to mock private functions (only supposed to be called through geometric_median)
 - Add additional geomtric median finding algorithms
-- Implement sci-kit learn preprocessing normalisation methods AND denormalisation methods
 - Choose the best geometric median algorithm based on input characteristics
