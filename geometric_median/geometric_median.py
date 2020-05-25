@@ -97,6 +97,9 @@ def geometric_median(points: np.array, weights: np.array = None, convergence_met
         result = weiszfeld_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
     elif convergence_method == 'vardi-zhang':
         result = vardi_zhang_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
+        # Note: Cohen-lee only works for euclidian distance
+        # TODO: Find out which methods work for non-euclidean distance measures
+        # TODO: Consider converting the whole thing to just euclidian
     elif convergence_method == 'cohen-lee':
         result = cohen_lee_algorithm(points, weights, convergence_threshold, iteration_limit, dist_measure)
 
@@ -170,7 +173,7 @@ def vardi_zhang_algorithm(points: np.ndarray, weights: np.array, convergence_thr
         # Narrow to only the non-zero weighted distances
         non_zero = ~np.isclose(weighted_distances, 0.0)
         weighted_distances = weighted_distances[non_zero]
-        # Implement the process detailed in "A comparison of algorithms for multivariate L1-median
+        # Implement the process detailed in "A comparison of algorithms for multivariate L1-median"
         T = (points[non_zero] / weighted_distances[:, None]).sum(axis=0) / (1.0 / weighted_distances[:, None]).sum()
         eta = 1 if np.isclose(points, prev_center).all(axis=1).any() else 0
         R = ((points[non_zero] - prev_center) / weighted_distances[:, None]).sum(axis=0)
@@ -189,6 +192,7 @@ def vardi_zhang_algorithm(points: np.ndarray, weights: np.array, convergence_thr
 
     raise ValueError(f"Vardi-Zhang algorithm not able to converge within {iteration_limit} iterations")
 
+
 def cohen_lee_algorithm(points: np.ndarray, weights: np.ndarray, convergence_threshold: float, iteration_limit: int, dist_measure: str) -> np.array:
 
     return accurate_median(points, convergence_threshold)
@@ -199,26 +203,30 @@ def accurate_median(points: np.ndarray, convergence_threshold: float):
 
     x0 = points.mean(axis=0)
     f_star_hat = cdist(np.array([x0]), points).sum()
-    t1 = calc_t(1, f_star_hat)
-    conv_thresh_star_hat = convergence_threshold / 3
-    t_star_hat = 2 * npoint / (conv_thresh_star_hat * f_star_hat)
-    conv_thresh_v = (1 / 8) * (conv_thresh_star_hat / (7 * npoint)) ** 2
-    conv_thresh_c = (conv_thresh_v / 36) ** (3 /2)
-    x1 = line_search(x0, t1, t1, 0, conv_thresh_c)
+    t_i = calc_t_i(1, f_star_hat)
+    conv_thresh_c = 1 / (10 ** 15 * npoint ** 3 * t_i ** 9 * f_star_hat ** 3)
+    x_i = line_search(x0, t_i, t_i, 0, conv_thresh_c)
 
-    i = 1
-    while calc_t(i, f_star_hat) <= t_star_hat:
-        t = calc_t(i, f_star_hat)
-        lambd, u = approx_min_eig(x, t, conv_thresh_v)
-        x = line_search(x, t, calc_t(i + 1, f_star_hat), u, conv_thresh_c)
-        i += 1
+    for i in range(1, 1000 * log(3000 * npoint / convergence_threshold)):
+        conv_thresh_v = 1 / (10 ** 8 * npoint ** 2 * t_i ** 2 * f_star_hat ** 2)
+        lambda_i, u_i = approx_min_eig(x_i, t_i, conv_thresh_v)
+        conv_thresh_c = 1 / (10 ** 15 * npoint ** 3 * t_i ** 3 * f_star_hat ** 3)
+        t_i1 = calc_t_i(i + 1, f_star_hat)
+        x_i = line_search(x_i, t_i, t_i1, u_i, conv_thresh_c)
+        t_i = t_i1
 
-def calc_t(i, f_star_hat):
+    return x_i
 
-    return (1 + 1/600) ** i / (400 * f_star_hat)
+def calc_t_i(i, f_star_hat):
+
+    return (1 + 1/600) ** (i - 1) / (400 * f_star_hat)
 
 
-def approx_min_eig(point: np.ndarray, path_parameter: float, convergence_threshold: float):
+def approx_min_eig(point: np.ndarray, points: np.ndarray, t: float, convergence_threshold: float):
+
+    for i, curr_point in enumerate(points):
+        t ** 4 * (point - curr_point) * (point - curr_point).T
+    A = t ** 4 * (-points + point) * (-points + point).T / ((1 + g_t))
 
     pass
 
